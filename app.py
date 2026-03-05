@@ -127,8 +127,10 @@ def decompile_job(job_id: str, jar_path: Path):
         threads = max(1, (os.cpu_count() or 2) - 1)
         cmd = [
             java_bin,
-            "-Xmx1g",
+            "-Xmx2g",
             "-XX:+UseG1GC",
+            "-XX:G1HeapRegionSize=16m",
+            "-XX:+ParallelRefProcEnabled",
             "-jar", str(VINEFLOWER_JAR),
             f"-dht={threads}",
             str(jar_path),
@@ -141,7 +143,7 @@ def decompile_job(job_id: str, jar_path: Path):
             cmd,
             capture_output=True,
             text=True,
-            timeout=900,
+            timeout=1800,
         )
 
         if proc.returncode != 0:
@@ -178,7 +180,7 @@ def decompile_job(job_id: str, jar_path: Path):
             jobs[job_id]["filename"] = f"{jar_stem}-decompiled.zip"
 
     except subprocess.TimeoutExpired:
-        update("error", "Decompilation timed out after 15 minutes.", 0)
+        update("error", "Decompilation timed out after 30 minutes.", 0)
     except Exception as exc:
         update("error", str(exc), 0)
     finally:
@@ -326,6 +328,7 @@ def decompile_class(job_id: str):
             cmd = [
                 java_bin, "-Xmx256m",
                 "-jar", str(VINEFLOWER_JAR),
+                "-mpm=10000",
                 str(extracted),
                 str(cls_out_dir),
             ]

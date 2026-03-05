@@ -60,7 +60,7 @@ cp .env.example .env
 | --- | --- | --- |
 | `PLATFORM` | `linux/arm64` | CPU architecture (`linux/amd64` or `linux/arm64`) |
 | `HOST_PORT` | `9090` | Host port to access the app |
-| `MEM_LIMIT` | `2g` | Container memory limit |
+| `MEM_LIMIT` | `3g` | Container memory limit |
 | `CPUS` | `4` | CPU cores available to the container |
 
 Uploads and output are persisted in named Docker volumes across container restarts.

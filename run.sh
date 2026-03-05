@@ -26,7 +26,7 @@ fi
 source "$VENV_DIR/bin/activate"
 
 echo "Installing/verifying Python dependencies…"
-pip install -q -r requirements.txt
+python3 -m pip install -q -r requirements.txt
 
 # ── Open browser after a short delay ────────────────────
 (sleep 1.5 && open "http://127.0.0.1:9090") &

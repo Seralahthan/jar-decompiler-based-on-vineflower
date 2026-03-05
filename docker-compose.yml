@@ -2,7 +2,7 @@ services:
   jar-decompiler:
     build: .
     platform: ${PLATFORM:-linux/arm64}
-    mem_limit: ${MEM_LIMIT:-2g}
+    mem_limit: ${MEM_LIMIT:-3g}
     cpus: "${CPUS:-4}"
     ports:
       - "${HOST_PORT:-9090}:${HOST_PORT:-9090}"
