@@ -18,6 +18,16 @@ A local web application that decompiles Java `.jar` files into human-readable Ja
 
 No host dependencies needed — Java and Python are bundled inside the image.
 
+### Using the pre-built image (recommended)
+
+```bash
+docker run -p 9090:5000 ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
+```
+
+The app will be available at `http://localhost:9090`.
+
+### Building locally
+
 ```bash
 docker compose up --build
 ```
@@ -57,6 +67,7 @@ chmod +x run.sh   # one-time
 ```
 
 The script will:
+
 1. Create a Python virtual environment (`.venv/`) on first run
 2. Install Flask automatically
 3. Start the app at `http://127.0.0.1:5000` — on macOS the browser opens automatically
@@ -65,7 +76,7 @@ Press **Ctrl+C** to stop.
 
 ## Project structure
 
-```
+```text
 jar-decompiler-based-on-vineflower/
 ├── app.py              # Flask backend
 ├── requirements.txt    # Python deps (Flask)
