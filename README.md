@@ -22,7 +22,24 @@ No host dependencies needed — Java and Python are bundled inside the image.
 docker compose up --build
 ```
 
-The app will be available at `http://localhost:9090`. Uploads and output are persisted in named Docker volumes across container restarts.
+The app will be available at `http://localhost:9090` by default.
+
+### Configuration
+
+Copy `.env.example` to `.env` and adjust for your environment:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PLATFORM` | `linux/arm64` | CPU architecture (`linux/amd64` or `linux/arm64`) |
+| `HOST_PORT` | `9090` | Host port to access the app |
+| `MEM_LIMIT` | `2g` | Container memory limit |
+| `CPUS` | `4` | CPU cores available to the container |
+
+Uploads and output are persisted in named Docker volumes across container restarts.
 
 ## Running locally (without Docker)
 
