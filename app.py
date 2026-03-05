@@ -367,4 +367,10 @@ def download(job_id: str):
 if __name__ == "__main__":
     cleaner = threading.Thread(target=cleanup_old_jobs, daemon=True)
     cleaner.start()
+    host_port = os.environ.get("HOST_PORT")
+    if host_port:
+        def _print_host_url():
+            time.sleep(0.5)
+            print(f" * Access the app at http://localhost:{host_port}", flush=True)
+        threading.Thread(target=_print_host_url, daemon=True).start()
     app.run(debug=False, host="0.0.0.0", port=5000)

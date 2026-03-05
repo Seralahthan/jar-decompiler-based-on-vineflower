@@ -6,6 +6,8 @@ services:
     cpus: "4"
     ports:
       - "9090:5000"
+    environment:
+      - HOST_PORT=9090
     volumes:
       # Persist uploads and output across container restarts
       - uploads:/app/uploads
