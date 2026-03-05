@@ -26,6 +26,20 @@ docker run -p 9090:9090 ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:l
 
 The app will be available at `http://localhost:9090`.
 
+To use a different port, pass both the port mapping and `HOST_PORT` env var together — they must match:
+
+```bash
+docker run -p 9095:9095 -e HOST_PORT=9095 ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
+```
+
+To apply resource limits:
+
+```bash
+docker run -p 9090:9090 --memory=2g --cpus=4 ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
+```
+
+The `--platform` flag is not needed — Docker automatically selects the correct architecture (`amd64` or `arm64`) for your machine from the multi-arch image.
+
 ### Building locally
 
 ```bash
