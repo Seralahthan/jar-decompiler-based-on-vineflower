@@ -29,13 +29,13 @@ echo "Installing/verifying Python dependencies…"
 pip install -q -r requirements.txt
 
 # ── Open browser after a short delay ────────────────────
-(sleep 1.5 && open "http://127.0.0.1:5000") &
+(sleep 1.5 && open "http://127.0.0.1:9090") &
 
 # ── Start Flask ──────────────────────────────────────────
 echo ""
 echo "  ┌──────────────────────────────────────────┐"
 echo "  │   JAR Decompiler is running              │"
-echo "  │   Open: http://127.0.0.1:5000            │"
+echo "  │   Open: http://127.0.0.1:9090            │"
 echo "  │   Press Ctrl+C to stop                   │"
 echo "  └──────────────────────────────────────────┘"
 echo ""
