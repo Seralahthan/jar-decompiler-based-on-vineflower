@@ -84,7 +84,7 @@ The script will:
 
 1. Create a Python virtual environment (`.venv/`) on first run
 2. Install Flask automatically
-3. Start the app at `http://127.0.0.1:5000` — on macOS the browser opens automatically
+3. Start the app at `http://127.0.0.1:9090` — on macOS the browser opens automatically
 
 Press **Ctrl+C** to stop.
 
