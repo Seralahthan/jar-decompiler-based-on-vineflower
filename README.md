@@ -21,7 +21,7 @@ No host dependencies needed — Java and Python are bundled inside the image.
 ### Using the pre-built image (recommended)
 
 ```bash
-docker run -p 9090:5000 ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
+docker run -p 9090:9090 ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
 ```
 
 The app will be available at `http://localhost:9090`.
@@ -83,6 +83,10 @@ jar-decompiler-based-on-vineflower/
 ├── run.sh              # One-command launcher
 ├── Dockerfile
 ├── docker-compose.yml
+├── .env.example        # Docker config template
+├── .github/
+│   └── workflows/
+│       └── docker-publish.yml  # Publishes image to ghcr.io on version tags
 ├── lib/
 │   └── vineflower.jar  # Vineflower decompiler
 ├── templates/

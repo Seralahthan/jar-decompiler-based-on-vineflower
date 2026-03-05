@@ -21,6 +21,7 @@ COPY lib/ lib/
 # Pre-create runtime directories
 RUN mkdir -p uploads output
 
+ENV HOST_PORT=9090
 EXPOSE 9090
 
 CMD ["python", "app.py"]
