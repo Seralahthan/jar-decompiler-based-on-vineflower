@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# App directories
+uploads/
+output/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Env files
+.env

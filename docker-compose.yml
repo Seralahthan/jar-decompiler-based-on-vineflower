@@ -1,0 +1,16 @@
+services:
+  jar-decompiler:
+    build: .
+    platform: linux/arm64
+    mem_limit: 2g
+    cpus: "4"
+    ports:
+      - "9090:5000"
+    volumes:
+      # Persist uploads and output across container restarts
+      - uploads:/app/uploads
+      - output:/app/output
+
+volumes:
+  uploads:
+  output:
