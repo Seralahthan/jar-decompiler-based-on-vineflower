@@ -21,3 +21,6 @@ output/
 
 # Env files
 .env
+
+# Ignore Dev Notes
+notes.txt
