@@ -1,5 +1,5 @@
 # ── Stage: runtime ──────────────────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Install Java 21 (JRE only — enough to run vineflower.jar)
 RUN apt-get update && \
@@ -21,6 +21,6 @@ COPY lib/ lib/
 # Pre-create runtime directories
 RUN mkdir -p uploads output
 
-EXPOSE 5000
+EXPOSE 9090
 
 CMD ["python", "app.py"]

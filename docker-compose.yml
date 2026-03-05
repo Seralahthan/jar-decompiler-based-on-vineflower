@@ -5,7 +5,7 @@ services:
     mem_limit: ${MEM_LIMIT:-2g}
     cpus: "${CPUS:-4}"
     ports:
-      - "${HOST_PORT:-9090}:5000"
+      - "${HOST_PORT:-9090}:${HOST_PORT:-9090}"
     environment:
       - HOST_PORT=${HOST_PORT:-9090}
     volumes:
