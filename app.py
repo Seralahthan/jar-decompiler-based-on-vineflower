@@ -367,5 +367,5 @@ def download(job_id: str):
 if __name__ == "__main__":
     cleaner = threading.Thread(target=cleanup_old_jobs, daemon=True)
     cleaner.start()
-    port = int(os.environ.get("HOST_PORT", 5000))
+    port = int(os.environ.get("HOST_PORT", 9090))
     app.run(debug=False, host="0.0.0.0", port=port)
