@@ -5,25 +5,34 @@ A local web application that decompiles Java `.jar` files into human-readable Ja
 ## Features
 
 - Drag-and-drop or browse-to-select JAR upload
-- Live progress bar during decompilation
-- Download decompiled Java sources as a single ZIP archive
+- Split-pane workspace with a file tree and source viewer
+- Lazy per-class decompilation — click any class to decompile and view it instantly
+- Per-session class cache so each class is only decompiled once
+- Full background decompilation with ZIP download of all sources
+- Syntax-highlighted Java source via highlight.js
+- Resizable tree/source panels
 - Automatic cleanup of temporary files after 1 hour
 - Runs entirely locally — your JARs never leave your machine
 
-## Requirements
+## Running with Docker
 
-| Requirement | Version |
-|---|---|
-| macOS | 10.15+ |
-| Java (JDK/JRE) | 11 or later |
-| Python | 3.9 or later |
+No host dependencies needed — Java and Python are bundled inside the image.
 
-Install Java via Homebrew if needed:
 ```bash
-brew install openjdk
+docker compose up --build
 ```
 
-## Running the app
+The app will be available at `http://localhost:9090`. Uploads and output are persisted in named Docker volumes across container restarts.
+
+## Running locally (without Docker)
+
+**Requirements:** Java 11+ and Python 3.9+ must be on your `PATH`.
+
+Install Java if needed:
+
+- **macOS:** `brew install openjdk`
+- **Ubuntu/Debian:** `sudo apt install openjdk-21-jre-headless`
+- **Other:** download from [adoptium.net](https://adoptium.net)
 
 ```bash
 chmod +x run.sh   # one-time
@@ -33,17 +42,19 @@ chmod +x run.sh   # one-time
 The script will:
 1. Create a Python virtual environment (`.venv/`) on first run
 2. Install Flask automatically
-3. Open your browser to `http://127.0.0.1:5000`
+3. Start the app at `http://127.0.0.1:5000` — on macOS the browser opens automatically
 
 Press **Ctrl+C** to stop.
 
 ## Project structure
 
 ```
-jar-decompiler-based-on-fern-flower/
+jar-decompiler-based-on-vineflower/
 ├── app.py              # Flask backend
 ├── requirements.txt    # Python deps (Flask)
 ├── run.sh              # One-command launcher
+├── Dockerfile
+├── docker-compose.yml
 ├── lib/
 │   └── vineflower.jar  # Vineflower decompiler
 ├── templates/
@@ -57,9 +68,9 @@ jar-decompiler-based-on-fern-flower/
 
 ## How it works
 
-1. You upload a `.jar` through the web UI
-2. Flask saves the JAR temporarily and spawns a background thread
-3. The thread runs `java -jar vineflower.jar <input.jar> <output_dir>`
-4. The decompiled `.java` files are packaged into a ZIP
-5. You click **Download ZIP** to get the results
+1. Upload a `.jar` through the web UI
+2. The file tree is built immediately by reading the JAR's entries — no waiting for decompilation
+3. Click any class in the tree to decompile just that class on demand; results are cached for the session
+4. In the background, Vineflower decompiles the full JAR and packages all sources into a ZIP
+5. A banner appears when the ZIP is ready — click **Download ZIP** to get all sources at once
 6. Temporary files are cleaned up automatically after 1 hour
