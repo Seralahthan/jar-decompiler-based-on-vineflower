@@ -24,26 +24,29 @@
   const retryBtn        = document.getElementById("retryBtn");
 
   // ── Element refs — workspace ───────────────────────────
-  const mainEl          = document.querySelector(".main");
-  const workspacePanel  = document.getElementById("workspacePanel");
-  const zipBanner       = document.getElementById("zipBanner");
-  const zipBannerMsg    = document.getElementById("zipBannerMsg");
-  const zipDownloadBtn  = document.getElementById("zipDownloadBtn");
-  const zipBannerClose  = document.getElementById("zipBannerClose");
-  const treePanel       = document.getElementById("treePanel");
-  const treeTitle       = document.getElementById("treeTitle");
-  const treeCount       = document.getElementById("treeCount");
-  const treeSearch      = document.getElementById("treeSearch");
-  const treeBody        = document.getElementById("treeBody");
-  const zipProgressHint = document.getElementById("zipProgressHint");
-  const newJobBtn2      = document.getElementById("newJobBtn2");
-  const resizeHandle    = document.getElementById("resizeHandle");
-  const sourceClassname = document.getElementById("sourceClassname");
-  const sourceCopyBtn   = document.getElementById("sourceCopyBtn");
-  const sourceLoading   = document.getElementById("sourceLoading");
-  const sourceEmpty     = document.getElementById("sourceEmpty");
-  const sourcePre       = document.getElementById("sourcePre");
-  const sourceCode      = document.getElementById("sourceCode");
+  const mainEl            = document.querySelector(".main");
+  const workspacePanel    = document.getElementById("workspacePanel");
+  const zipBanner         = document.getElementById("zipBanner");
+  const zipBannerMsg      = document.getElementById("zipBannerMsg");
+  const zipDownloadBtn    = document.getElementById("zipDownloadBtn");
+  const zipBannerClose    = document.getElementById("zipBannerClose");
+  const treePanel         = document.getElementById("treePanel");
+  const treeTitle         = document.getElementById("treeTitle");
+  const treeCount         = document.getElementById("treeCount");
+  const treeSearch        = document.getElementById("treeSearch");
+  const treeBody          = document.getElementById("treeBody");
+  const buildZipBtn       = document.getElementById("buildZipBtn");
+  const zipFooterProgress = document.getElementById("zipFooterProgress");
+  const zipFooterBarFill  = document.getElementById("zipFooterBarFill");
+  const zipFooterPct      = document.getElementById("zipFooterPct");
+  const newJobBtn2        = document.getElementById("newJobBtn2");
+  const resizeHandle      = document.getElementById("resizeHandle");
+  const sourceClassname   = document.getElementById("sourceClassname");
+  const sourceCopyBtn     = document.getElementById("sourceCopyBtn");
+  const sourceLoading     = document.getElementById("sourceLoading");
+  const sourceEmpty       = document.getElementById("sourceEmpty");
+  const sourcePre         = document.getElementById("sourcePre");
+  const sourceCode        = document.getElementById("sourceCode");
 
   // ── State ──────────────────────────────────────────────
   let selectedFile    = null;
@@ -129,6 +132,8 @@
     hide(errorCard);
     hide(workspacePanel);
     hide(zipBanner);
+    hide(zipFooterProgress);
+    show(buildZipBtn);
 
     treeBody.innerHTML          = "";
     sourceCode.textContent      = "";
@@ -203,10 +208,28 @@
       renderTree(treeData.tree, treeBody, 0);
     }
 
-    // Poll for ZIP completion every 3 seconds
-    show(zipProgressHint);
-    zipPollInterval = setInterval(() => pollZipStatus(currentJobId), 3000);
+    // Show Build ZIP button — user triggers decompilation manually
+    show(buildZipBtn);
+    hide(zipFooterProgress);
   }
+
+  // ── Build ZIP button ───────────────────────────────────
+  buildZipBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+
+    try {
+      const res = await fetch(`/api/start-decompile/${currentJobId}`, { method: "POST" });
+      if (!res.ok) return; // already started or error — ignore silently
+    } catch (_) { return; }
+
+    // Swap button for progress bar
+    hide(buildZipBtn);
+    zipFooterBarFill.style.width = "0%";
+    zipFooterPct.textContent     = "0%";
+    show(zipFooterProgress);
+
+    zipPollInterval = setInterval(() => pollZipStatus(currentJobId), 3000);
+  });
 
   // ── Tree rendering ─────────────────────────────────────
   function renderTree(nodes, parentEl, depth) {
@@ -342,21 +365,27 @@
     });
   });
 
-  // ── ZIP-ready banner polling ───────────────────────────
+  // ── ZIP status polling (drives footer progress bar) ────
   async function pollZipStatus(jobId) {
     try {
       const res  = await fetch(`/api/status/${jobId}`);
       const data = await res.json();
 
+      // Update footer progress bar
+      const pct = data.progress || 0;
+      zipFooterBarFill.style.width = pct + "%";
+      zipFooterPct.textContent     = pct + "%";
+
       if (data.status === "done") {
         stopZipPoll();
-        hide(zipProgressHint);
+        hide(zipFooterProgress);
         zipDownloadBtn.href = `/api/download/${jobId}`;
         zipBannerMsg.textContent = data.message || "Full decompilation complete!";
         show(zipBanner);
       } else if (data.status === "error") {
         stopZipPoll();
-        hide(zipProgressHint);
+        hide(zipFooterProgress);
+        show(buildZipBtn); // allow retry
       }
     } catch (_) { /* network glitch — keep polling */ }
   }

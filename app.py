@@ -227,10 +227,20 @@ def upload():
             "class_lock": threading.Lock(),
         }
 
-    t = threading.Thread(target=decompile_job, args=(job_id, jar_path), daemon=True)
-    t.start()
-
     return jsonify(job_id=job_id), 202
+
+
+@app.route("/api/start-decompile/<job_id>", methods=["POST"])
+def start_decompile(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job is None:
+        return jsonify(error="Job not found"), 404
+    if job.get("status") != "queued":
+        return jsonify(error="Decompilation already started"), 400
+    jar_path = Path(job.get("jar_path", ""))
+    threading.Thread(target=decompile_job, args=(job_id, jar_path), daemon=True).start()
+    return jsonify(ok=True), 202
 
 
 @app.route("/api/status/<job_id>")
@@ -328,7 +338,6 @@ def decompile_class(job_id: str):
             cmd = [
                 java_bin, "-Xmx256m",
                 "-jar", str(VINEFLOWER_JAR),
-                "-mpm=10000",
                 str(extracted),
                 str(cls_out_dir),
             ]
