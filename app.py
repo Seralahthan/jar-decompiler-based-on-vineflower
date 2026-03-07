@@ -45,10 +45,108 @@ def cleanup_old_jobs():
 def _delete_job_artifacts(job_id: str):
     upload_path = UPLOAD_DIR / job_id
     output_path = OUTPUT_DIR / job_id
-    result_zip = OUTPUT_DIR / f"{job_id}.zip"
-    for p in (upload_path, output_path):
+    index_path  = OUTPUT_DIR / f"{job_id}_index"
+    result_zip  = OUTPUT_DIR / f"{job_id}.zip"
+    for p in (upload_path, output_path, index_path):
         shutil.rmtree(p, ignore_errors=True)
     result_zip.unlink(missing_ok=True)
+
+
+# ── Method index ──────────────────────────────────────────
+# Matches Java method declarations: [modifiers] returnType methodName(
+_JAVA_METHOD_RE = re.compile(
+    # Applied against line.lstrip() so ^ always sees the real first char.
+    # Return type is mandatory to reject bare calls like `foo(arg)`.
+    # Negative lookahead rejects statement-starting keywords like `return foo(`.
+    r'^(?!return\b|throw\b|new\b|if\b|else\b|for\b|while\b|do\b|switch\b|catch\b|try\b|assert\b|case\b|break\b|continue\b)'
+    r'(?:(?:public|private|protected)\s+)?'
+    r'(?:(?:static|final|abstract|synchronized|native|default|strictfp)\s+)*'
+    r'[\w<>\[\]?,\s]+?\s+'   # return type (mandatory)
+    r'(\w+)\s*\('             # method name
+)
+_SKIP_NAMES = frozenset({
+    'if', 'for', 'while', 'switch', 'catch', 'try', 'new', 'return',
+    'class', 'interface', 'enum', 'assert', 'throw', 'synchronized',
+    'this', 'super', 'import', 'package', 'else',
+})
+
+
+def build_method_index(src_root: Path) -> dict:
+    """Scan decompiled .java files and return method_name -> [file:line, ...] index."""
+    index: dict[str, list[str]] = {}
+    for java_file in src_root.rglob("*.java"):
+        try:
+            lines = java_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            rel = java_file.relative_to(src_root).as_posix()
+            for lineno, line in enumerate(lines, 1):
+                m = _JAVA_METHOD_RE.match(line.lstrip())
+                if m:
+                    name = m.group(1)
+                    if name and name not in _SKIP_NAMES:
+                        index.setdefault(name, []).append(f"{rel}:{lineno}")
+        except Exception:
+            continue
+    return index
+
+
+def index_job(job_id: str, jar_path: Path):
+    """Run Vineflower for method indexing — keeps decompiled output, no ZIP."""
+    def update_idx(status, progress):
+        with jobs_lock:
+            jobs[job_id]["index_status"]   = status
+            jobs[job_id]["index_progress"] = progress
+
+    index_dir = OUTPUT_DIR / f"{job_id}_index"
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        update_idx("running", 10)
+        java_bin = shutil.which("java")
+        if not java_bin:
+            raise RuntimeError("Java not found on PATH.")
+
+        threads = max(1, (os.cpu_count() or 2) - 2)
+        cmd = [
+            java_bin, "-Xmx2g", "-XX:+UseG1GC",
+            "-XX:G1HeapRegionSize=16m", "-XX:+ParallelRefProcEnabled",
+            "-jar", str(VINEFLOWER_JAR),
+            f"-dht={threads}", "-mpm=10000",
+            str(jar_path), str(index_dir),
+        ]
+
+        update_idx("running", 20)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Decompiler exited with code {proc.returncode}")
+
+        update_idx("running", 75)
+
+        # Vineflower may output a sources JAR instead of plain files
+        items = list(index_dir.iterdir())
+        if len(items) == 1 and items[0].suffix == ".jar":
+            src_root = index_dir / "sources"
+            src_root.mkdir()
+            with zipfile.ZipFile(items[0], "r") as zf:
+                zf.extractall(src_root)
+            items[0].unlink()
+        else:
+            src_root = index_dir
+
+        update_idx("running", 85)
+        method_index = build_method_index(src_root)
+
+        with jobs_lock:
+            jobs[job_id]["index_status"]   = "done"
+            jobs[job_id]["index_progress"] = 100
+            jobs[job_id]["method_index"]   = method_index
+
+    except subprocess.TimeoutExpired:
+        update_idx("error", 0)
+    except Exception as exc:
+        with jobs_lock:
+            jobs[job_id]["index_status"]  = "error"
+            jobs[job_id]["index_error"]   = str(exc)
+            jobs[job_id]["index_progress"] = 0
 
 
 def build_tree(jar_path: Path) -> dict:
@@ -243,6 +341,65 @@ def start_decompile(job_id: str):
     return jsonify(ok=True), 202
 
 
+@app.route("/api/build-index/<job_id>", methods=["POST"])
+def build_index_route(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job is None:
+        return jsonify(error="Job not found"), 404
+    status = job.get("index_status", "idle")
+    if status == "done":
+        return jsonify(ok=True), 200
+    if status == "running":
+        return jsonify(ok=False, status="running"), 202
+    with jobs_lock:
+        jobs[job_id]["index_status"]   = "queued"
+        jobs[job_id]["index_progress"] = 0
+    jar_path = Path(job.get("jar_path", ""))
+    threading.Thread(target=index_job, args=(job_id, jar_path), daemon=True).start()
+    return jsonify(ok=True), 202
+
+
+@app.route("/api/index-status/<job_id>")
+def index_status_route(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job is None:
+        return jsonify(error="Job not found"), 404
+    return jsonify(
+        status=job.get("index_status", "idle"),
+        progress=job.get("index_progress", 0),
+    )
+
+
+@app.route("/api/search-methods/<job_id>")
+def search_methods_route(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job is None:
+        return jsonify(error="Job not found"), 404
+    if job.get("index_status") != "done":
+        return jsonify(error="Index not ready"), 400
+    query = request.args.get("q", "").strip().lower()
+    if len(query) < 2:
+        return jsonify(results=[])
+    method_index: dict = job.get("method_index", {})
+    results = []
+    for method_name, locations in method_index.items():
+        if query in method_name.lower():
+            for loc in locations[:5]:
+                file_path, _, line_str = loc.rpartition(":")
+                class_path = file_path.replace(".java", ".class")
+                results.append({
+                    "method": method_name,
+                    "class_path": class_path,
+                    "line": int(line_str) if line_str.isdigit() else 1,
+                })
+        if len(results) >= 100:
+            break
+    return jsonify(results=results[:100])
+
+
 @app.route("/api/status/<job_id>")
 def status(job_id: str):
     with jobs_lock:
@@ -296,6 +453,20 @@ def decompile_class(job_id: str):
     cached = job["class_cache"].get(class_path)
     if cached is not None:
         return jsonify(source=cached, cached=True)
+
+    # If the method index was built, the class is already decompiled on disk —
+    # serve it directly without re-invoking Vineflower.
+    java_rel = class_path.replace(".class", ".java")
+    index_dir = OUTPUT_DIR / f"{job_id}_index"
+    for candidate_root in (index_dir / "sources", index_dir):
+        java_file = candidate_root / java_rel
+        if java_file.exists():
+            try:
+                source = java_file.read_text(encoding="utf-8", errors="replace")
+                job["class_cache"][class_path] = source
+                return jsonify(source=source, cached=False)
+            except Exception:
+                pass  # fall through to per-class decompilation
 
     jar_path = Path(job.get("jar_path", ""))
     if not jar_path.exists():

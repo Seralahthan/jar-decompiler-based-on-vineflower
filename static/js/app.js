@@ -17,43 +17,48 @@
   const progressPct     = document.getElementById("progressPct");
   const progressBarFill = document.getElementById("progressBarFill");
   const progressMsg     = document.getElementById("progressMsg");
-  const resultSub       = document.getElementById("resultSub");
-  const downloadBtn     = document.getElementById("downloadBtn");
   const newJobBtn       = document.getElementById("newJobBtn");
   const errorMsg        = document.getElementById("errorMsg");
   const retryBtn        = document.getElementById("retryBtn");
 
   // ── Element refs — workspace ───────────────────────────
-  const mainEl            = document.querySelector(".main");
-  const workspacePanel    = document.getElementById("workspacePanel");
-  const zipBanner         = document.getElementById("zipBanner");
-  const zipBannerMsg      = document.getElementById("zipBannerMsg");
-  const zipDownloadBtn    = document.getElementById("zipDownloadBtn");
-  const zipBannerClose    = document.getElementById("zipBannerClose");
-  const treePanel         = document.getElementById("treePanel");
-  const treeTitle         = document.getElementById("treeTitle");
-  const treeCount         = document.getElementById("treeCount");
-  const treeSearch        = document.getElementById("treeSearch");
-  const treeBody          = document.getElementById("treeBody");
-  const buildZipBtn       = document.getElementById("buildZipBtn");
-  const zipFooterProgress = document.getElementById("zipFooterProgress");
-  const zipFooterBarFill  = document.getElementById("zipFooterBarFill");
-  const zipFooterPct      = document.getElementById("zipFooterPct");
-  const newJobBtn2        = document.getElementById("newJobBtn2");
-  const resizeHandle      = document.getElementById("resizeHandle");
-  const sourceClassname   = document.getElementById("sourceClassname");
-  const sourceCopyBtn     = document.getElementById("sourceCopyBtn");
-  const sourceLoading     = document.getElementById("sourceLoading");
-  const sourceEmpty       = document.getElementById("sourceEmpty");
-  const sourcePre         = document.getElementById("sourcePre");
-  const sourceCode        = document.getElementById("sourceCode");
+  const mainEl              = document.querySelector(".main");
+  const workspacePanel      = document.getElementById("workspacePanel");
+  const zipBanner           = document.getElementById("zipBanner");
+  const zipBannerMsg        = document.getElementById("zipBannerMsg");
+  const zipDownloadBtn      = document.getElementById("zipDownloadBtn");
+  const zipBannerClose      = document.getElementById("zipBannerClose");
+  const treePanel           = document.getElementById("treePanel");
+  const treeTitle           = document.getElementById("treeTitle");
+  const treeCount           = document.getElementById("treeCount");
+  const treeSearch          = document.getElementById("treeSearch");
+  const treeBody            = document.getElementById("treeBody");
+  const buildZipBtn         = document.getElementById("buildZipBtn");
+  const zipFooterProgress   = document.getElementById("zipFooterProgress");
+  const zipFooterBarFill    = document.getElementById("zipFooterBarFill");
+  const zipFooterPct        = document.getElementById("zipFooterPct");
+  const findMethodsBtn      = document.getElementById("findMethodsBtn");
+  const indexingHint        = document.getElementById("indexingHint");
+  const indexingPct         = document.getElementById("indexingPct");
+  const newJobBtn2          = document.getElementById("newJobBtn2");
+  const resizeHandle        = document.getElementById("resizeHandle");
+  const sourceClassname     = document.getElementById("sourceClassname");
+  const sourceCopyBtn       = document.getElementById("sourceCopyBtn");
+  const sourceLoading       = document.getElementById("sourceLoading");
+  const sourceEmpty         = document.getElementById("sourceEmpty");
+  const sourcePre           = document.getElementById("sourcePre");
+  const sourceCode          = document.getElementById("sourceCode");
 
   // ── State ──────────────────────────────────────────────
-  let selectedFile    = null;
-  let currentJobId    = null;
-  let activeClassPath = null;
-  let classCache      = {};
-  let zipPollInterval = null;
+  let selectedFile      = null;
+  let currentJobId      = null;
+  let activeClassPath   = null;
+  let classCache        = {};
+  let zipPollInterval   = null;
+  let indexPollInterval = null;
+  let indexReady        = false;
+  let currentTreeData   = null;
+  let flatClassList     = [];
 
   // ── Helpers ────────────────────────────────────────────
   function formatBytes(bytes) {
@@ -74,6 +79,10 @@
 
   function stopZipPoll() {
     if (zipPollInterval) { clearInterval(zipPollInterval); zipPollInterval = null; }
+  }
+
+  function stopIndexPoll() {
+    if (indexPollInterval) { clearInterval(indexPollInterval); indexPollInterval = null; }
   }
 
   // ── File selection ─────────────────────────────────────
@@ -121,10 +130,14 @@
   // ── Reset to upload view ───────────────────────────────
   function resetUI() {
     stopZipPoll();
+    stopIndexPoll();
     selectedFile    = null;
     currentJobId    = null;
     activeClassPath = null;
     classCache      = {};
+    indexReady      = false;
+    currentTreeData = null;
+    flatClassList   = [];
 
     hide(fileInfo);
     hide(progressCard);
@@ -133,11 +146,15 @@
     hide(workspacePanel);
     hide(zipBanner);
     hide(zipFooterProgress);
+    hide(indexingHint);
     show(buildZipBtn);
+    show(findMethodsBtn);
+    findMethodsBtn.disabled = false;
 
-    treeBody.innerHTML          = "";
-    sourceCode.textContent      = "";
-    treeSearch.value            = "";
+    treeSearch.value       = "";
+    treeSearch.placeholder = "Filter classes…";
+    treeBody.innerHTML     = "";
+    sourceCode.textContent = "";
     sourceClassname.textContent = "Select a class to view its source";
 
     hide(sourceCopyBtn);
@@ -193,36 +210,39 @@
   }
 
   // ── Workspace transition ───────────────────────────────
-  function transitionToWorkspace(treeData) {
+  function transitionToWorkspace(data) {
     hide(mainEl);
     hide(progressCard);
     show(workspacePanel);
     document.body.classList.add("workspace-active");
 
-    treeTitle.textContent = treeData.jar_name || "JAR";
-    treeCount.textContent = `${treeData.class_count} classes`;
+    currentTreeData = data;
+    flatClassList   = [];
 
-    if (treeData.class_count === 0) {
+    treeTitle.textContent = data.jar_name || "JAR";
+    treeCount.textContent = `${data.class_count} classes`;
+
+    if (data.class_count === 0) {
       treeBody.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:0.83rem;">No .class files found in this JAR.</div>';
     } else {
-      renderTree(treeData.tree, treeBody, 0);
+      buildFlatList(data.tree);
+      renderTree(data.tree, treeBody, 0);
     }
 
-    // Show Build ZIP button — user triggers decompilation manually
     show(buildZipBtn);
+    show(findMethodsBtn);
     hide(zipFooterProgress);
+    hide(indexingHint);
   }
 
   // ── Build ZIP button ───────────────────────────────────
   buildZipBtn.addEventListener("click", async () => {
     if (!currentJobId) return;
-
     try {
       const res = await fetch(`/api/start-decompile/${currentJobId}`, { method: "POST" });
-      if (!res.ok) return; // already started or error — ignore silently
+      if (!res.ok) return;
     } catch (_) { return; }
 
-    // Swap button for progress bar
     hide(buildZipBtn);
     zipFooterBarFill.style.width = "0%";
     zipFooterPct.textContent     = "0%";
@@ -231,13 +251,64 @@
     zipPollInterval = setInterval(() => pollZipStatus(currentJobId), 3000);
   });
 
+  // ── Find Methods button ────────────────────────────────
+  findMethodsBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+
+    try {
+      const res = await fetch(`/api/build-index/${currentJobId}`, { method: "POST" });
+      const data = await res.json();
+      // Index already built — activate immediately
+      if (res.status === 200 && data.ok) {
+        onIndexReady();
+        return;
+      }
+      // 202: indexing just started OR already running — fall through to show progress
+    } catch (_) { return; }
+
+    findMethodsBtn.disabled = true;
+    indexingPct.textContent = "Indexing…";
+    show(indexingHint);
+
+    if (!indexPollInterval) {
+      indexPollInterval = setInterval(() => pollIndexStatus(currentJobId), 3000);
+    }
+  });
+
+  async function pollIndexStatus(jobId) {
+    try {
+      const res  = await fetch(`/api/index-status/${jobId}`);
+      const data = await res.json();
+
+      const pct = data.progress || 0;
+      indexingPct.textContent = `Indexing… ${pct}%`;
+
+      if (data.status === "done") {
+        stopIndexPoll();
+        hide(indexingHint);
+        onIndexReady();
+      } else if (data.status === "error") {
+        stopIndexPoll();
+        hide(indexingHint);
+        findMethodsBtn.disabled = false; // allow retry
+      }
+    } catch (_) { /* keep polling */ }
+  }
+
+  function onIndexReady() {
+    indexReady = true;
+    findMethodsBtn.disabled = true;
+    treeSearch.placeholder = "Filter classes and methods…";
+    const q = treeSearch.value.trim();
+    if (q) unifiedSearch(q);
+  }
+
   // ── Tree rendering ─────────────────────────────────────
   function renderTree(nodes, parentEl, depth) {
     for (const node of nodes) {
       if (node.type === "package") {
         const details = document.createElement("details");
         details.className = "tree-pkg";
-        // Auto-expand if only one top-level package
         if (depth === 0 && nodes.length === 1) details.open = true;
         details.style.setProperty("--tree-depth", depth);
 
@@ -262,38 +333,122 @@
     }
   }
 
-  // ── Filter tree ────────────────────────────────────────
-  let filterDebounce = null;
-  treeSearch.addEventListener("input", () => {
-    clearTimeout(filterDebounce);
-    filterDebounce = setTimeout(() => filterTree(treeSearch.value.trim().toLowerCase()), 200);
-  });
-
-  function filterTree(query) {
-    const items = treeBody.querySelectorAll(".tree-item");
-    if (!query) {
-      items.forEach(el => el.classList.remove("hidden"));
-      return;
+  function buildFlatList(nodes) {
+    for (const node of nodes) {
+      if (node.type === "package") buildFlatList(node.children);
+      else flatClassList.push(node);
     }
-    items.forEach(el => {
-      const match = el.dataset.name.includes(query) ||
-                    el.dataset.path.toLowerCase().includes(query);
-      el.classList.toggle("hidden", !match);
-      if (match) {
-        let p = el.parentElement;
+  }
+
+  function restoreTree() {
+    treeBody.innerHTML = "";
+    if (currentTreeData) renderTree(currentTreeData.tree, treeBody, 0);
+    if (activeClassPath) {
+      const item = treeBody.querySelector(`[data-path="${CSS.escape(activeClassPath)}"]`);
+      if (item) {
+        item.classList.add("active");
+        let p = item.parentElement;
         while (p && p !== treeBody) {
           if (p.tagName === "DETAILS") p.open = true;
           p = p.parentElement;
         }
       }
-    });
+    }
+  }
+
+  // ── Unified search (classes + methods when index ready) ─
+  let filterDebounce = null;
+  treeSearch.addEventListener("input", () => {
+    clearTimeout(filterDebounce);
+    const query = treeSearch.value.trim();
+    filterDebounce = setTimeout(() => unifiedSearch(query), 200);
+  });
+
+  async function unifiedSearch(query) {
+    if (!query) { restoreTree(); return; }
+
+    const q = query.toLowerCase();
+    const classMatches = flatClassList
+      .filter(c => c.name.toLowerCase().includes(q) || c.path.toLowerCase().includes(q))
+      .slice(0, 60);
+
+    let methodMatches = [];
+    if (indexReady && currentJobId) {
+      try {
+        const res  = await fetch(`/api/search-methods/${currentJobId}?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        methodMatches = (data.results || []).slice(0, 40);
+      } catch (_) {}
+    }
+
+    // Discard stale result if the user has already typed something else
+    if (treeSearch.value.trim() !== query) return;
+
+    renderFlatResults(classMatches, methodMatches);
+  }
+
+  function renderFlatResults(classMatches, methodMatches) {
+    treeBody.innerHTML = "";
+    if (classMatches.length === 0 && methodMatches.length === 0) {
+      treeBody.innerHTML = '<div class="search-empty">No results found.</div>';
+      return;
+    }
+
+    const frag       = document.createDocumentFragment();
+    const showLabels = classMatches.length > 0 && methodMatches.length > 0;
+
+    if (classMatches.length > 0) {
+      if (showLabels) {
+        const lbl = document.createElement("div");
+        lbl.className   = "search-section-label";
+        lbl.textContent = "Classes";
+        frag.appendChild(lbl);
+      }
+      for (const c of classMatches) {
+        const item = document.createElement("div");
+        item.className = "tree-item" + (c.path === activeClassPath ? " active" : "");
+        item.style.setProperty("--tree-depth", 0);
+        item.dataset.path = c.path;
+        item.dataset.name = c.name.toLowerCase();
+        item.textContent  = c.name.replace(/\.class$/, "");
+        item.title        = c.path;
+        item.addEventListener("click", () => loadClass(c.path));
+        frag.appendChild(item);
+      }
+    }
+
+    if (methodMatches.length > 0) {
+      if (showLabels) {
+        const lbl = document.createElement("div");
+        lbl.className   = "search-section-label";
+        lbl.textContent = "Methods";
+        frag.appendChild(lbl);
+      }
+      for (const r of methodMatches) {
+        const item = document.createElement("div");
+        item.className = "tree-item search-result-method" + (r.class_path === activeClassPath ? " active" : "");
+        item.style.setProperty("--tree-depth", 0);
+        item.innerHTML = `<span class="srm-name">${escapeHtml(r.method)}</span><span class="srm-class">${escapeHtml(r.class_path.replace(/\//g, ".").replace(/\.class$/, ""))}</span>`;
+        item.title = r.class_path;
+        item.addEventListener("click", () => loadClass(r.class_path, r.line));
+        frag.appendChild(item);
+      }
+    }
+
+    treeBody.appendChild(frag);
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // ── Load and display a class ───────────────────────────
-  async function loadClass(classPath) {
-    if (classPath === activeClassPath) return;
+  async function loadClass(classPath, targetLine) {
+    if (classPath === activeClassPath) {
+      if (targetLine) scrollToLine(targetLine);
+      return;
+    }
 
-    // Update active highlight in tree
     treeBody.querySelectorAll(".tree-item.active")
       .forEach(el => el.classList.remove("active"));
     const clickedItem = treeBody.querySelector(`[data-path="${CSS.escape(classPath)}"]`);
@@ -307,9 +462,8 @@
     hide(sourcePre);
     show(sourceLoading);
 
-    // Check client-side cache first
     if (classCache[classPath] !== undefined) {
-      displaySource(classCache[classPath]);
+      displaySource(classCache[classPath], targetLine);
       return;
     }
 
@@ -327,22 +481,38 @@
       }
 
       classCache[classPath] = data.source;
-      displaySource(data.source);
+      displaySource(data.source, targetLine);
     } catch (err) {
       showSourceError(err.message);
     }
   }
 
-  function displaySource(source) {
+  function displaySource(source, targetLine) {
     hide(sourceLoading);
     hide(sourceEmpty);
     sourceCode.textContent = source;
-    // Reset highlight.js state for re-highlighting
     sourceCode.removeAttribute("data-highlighted");
     show(sourcePre);
     show(sourceCopyBtn);
     if (typeof hljs !== "undefined") {
       hljs.highlightElement(sourceCode);
+      if (typeof hljs.lineNumbersBlock === "function") {
+        hljs.lineNumbersBlock(sourceCode);
+      }
+    }
+    if (targetLine) {
+      // The line-numbers plugin renders asynchronously via setTimeout(0),
+      // so we wait a tick before querying the generated table rows.
+      setTimeout(() => scrollToLine(targetLine), 50);
+    }
+  }
+
+  function scrollToLine(line) {
+    sourcePre.querySelectorAll("tr.method-target").forEach(r => r.classList.remove("method-target"));
+    const targetRow = sourcePre.querySelector(`[data-line-number="${line}"]`)?.closest("tr");
+    if (targetRow) {
+      targetRow.classList.add("method-target");
+      targetRow.scrollIntoView({ block: "center" });
     }
   }
 
@@ -371,7 +541,6 @@
       const res  = await fetch(`/api/status/${jobId}`);
       const data = await res.json();
 
-      // Update footer progress bar
       const pct = data.progress || 0;
       zipFooterBarFill.style.width = pct + "%";
       zipFooterPct.textContent     = pct + "%";
@@ -385,7 +554,7 @@
       } else if (data.status === "error") {
         stopZipPoll();
         hide(zipFooterProgress);
-        show(buildZipBtn); // allow retry
+        show(buildZipBtn);
       }
     } catch (_) { /* network glitch — keep polling */ }
   }
@@ -393,8 +562,8 @@
   zipBannerClose.addEventListener("click", () => hide(zipBanner));
 
   // ── Resize handle ──────────────────────────────────────
-  let isDragging    = false;
-  let dragStartX    = 0;
+  let isDragging     = false;
+  let dragStartX     = 0;
   let dragStartWidth = 0;
 
   resizeHandle.addEventListener("mousedown", (e) => {
@@ -421,7 +590,7 @@
     document.body.style.userSelect = "";
   });
 
-  // ── Error card helper (used for upload/scan failures) ──
+  // ── Error card helper ──────────────────────────────────
   function showError(msg) {
     hide(progressCard);
     hide(uploadCard);

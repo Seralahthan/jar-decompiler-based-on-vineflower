@@ -161,22 +161,23 @@
         </div>
         <div class="tree-body" id="treeBody"></div>
         <div class="tree-footer">
-          <div class="zip-build-area">
-            <button class="btn btn-outline btn-sm" id="buildZipBtn">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M6.5 1v7M6.5 8l-3-3M6.5 8l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M1.5 11h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              </svg>
-              Build ZIP
-            </button>
-            <div class="zip-footer-progress hidden" id="zipFooterProgress">
-              <div class="zip-footer-bar-track">
-                <div class="zip-footer-bar-fill" id="zipFooterBarFill"></div>
+          <div class="footer-actions-left">
+            <div class="zip-build-area">
+              <button class="btn btn-outline btn-sm" id="buildZipBtn">Build ZIP</button>
+              <div class="zip-footer-progress hidden" id="zipFooterProgress">
+                <div class="zip-footer-bar-track">
+                  <div class="zip-footer-bar-fill" id="zipFooterBarFill"></div>
+                </div>
+                <span class="zip-footer-pct" id="zipFooterPct">0%</span>
               </div>
-              <span class="zip-footer-pct" id="zipFooterPct">0%</span>
             </div>
+            <button class="btn btn-outline btn-sm" id="findMethodsBtn">Find Methods</button>
+            <span class="indexing-hint hidden" id="indexingHint">
+              <span class="mini-spinner"></span>
+              <span id="indexingPct">Indexing…</span>
+            </span>
+            <button class="btn btn-outline btn-sm footer-new-jar" id="newJobBtn2">New JAR</button>
           </div>
-          <button class="btn btn-outline btn-sm" id="newJobBtn2">New JAR</button>
         </div>
       </aside>
 
@@ -206,6 +207,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlightjs-line-numbers.js/2.8.0/highlightjs-line-numbers.min.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>
