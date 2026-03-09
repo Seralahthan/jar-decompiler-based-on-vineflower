@@ -496,6 +496,12 @@
     show(sourceCopyBtn);
     if (typeof hljs !== "undefined") {
       hljs.highlightElement(sourceCode);
+      // hljs can produce a leading \n in innerHTML; the line-numbers plugin
+      // would count it as an extra empty row (data-line-number="1"), shifting
+      // every subsequent row's number up by 1 and breaking method navigation.
+      if (sourceCode.innerHTML.startsWith("\n")) {
+        sourceCode.innerHTML = sourceCode.innerHTML.slice(1);
+      }
       if (typeof hljs.lineNumbersBlock === "function") {
         hljs.lineNumbersBlock(sourceCode);
       }
