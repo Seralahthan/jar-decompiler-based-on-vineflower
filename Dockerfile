@@ -13,7 +13,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
-COPY app.py .
+COPY app.py config.py jobs.py pools.py gunicorn.conf.py ./
+COPY routes/ routes/
+COPY services/ services/
 COPY templates/ templates/
 COPY static/ static/
 COPY lib/ lib/
@@ -21,7 +23,12 @@ COPY lib/ lib/
 # Pre-create runtime directories
 RUN mkdir -p uploads output
 
+# Run as non-root user for security
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
 ENV HOST_PORT=9090
 EXPOSE 9090
 
-CMD ["python", "app.py"]
+# Production: Gunicorn WSGI server
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jar-decompiler
+  namespace: jar-decompiler
+  labels:
+    app.kubernetes.io/name: jar-decompiler
+    app.kubernetes.io/component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jar-decompiler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jar-decompiler
+    spec:
+      containers:
+        - name: jar-decompiler
+          image: ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
+          ports:
+            - containerPort: 9090
+          env:
+            - name: HOST_PORT
+              value: "9090"
+            - name: REDIS_URL
+              value: "redis://redis-svc:6379/0"
+            - name: GUNICORN_WORKERS
+              value: "4"
+            - name: GUNICORN_THREADS
+              value: "4"
+            - name: FULL_DECOMPILE_POOL_SIZE
+              value: "4"
+            - name: CLASS_DECOMPILE_POOL_SIZE
+              value: "20"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+            limits:
+              memory: "6Gi"
+              cpu: "4"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+            - name: output
+              mountPath: /app/output
+      volumes:
+        - name: uploads
+          emptyDir: {}
+        - name: output
+          emptyDir: {}

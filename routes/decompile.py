@@ -1,11 +1,13 @@
 import subprocess
 import zipfile
+from concurrent.futures import TimeoutError
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+import jobs
 from config import OUTPUT_DIR
-from jobs import jobs, jobs_lock
+from pools import submit_class_decompile
 from services.decompiler import decompile_single_class
 
 bp = Blueprint("decompile", __name__)
@@ -13,8 +15,7 @@ bp = Blueprint("decompile", __name__)
 
 @bp.route("/api/decompile-class/<job_id>", methods=["POST"])
 def decompile_class(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = jobs.get_job(job_id)
     if job is None:
         return jsonify(error="Job not found"), 404
 
@@ -27,8 +28,8 @@ def decompile_class(job_id: str):
     if any(s in ("", "..") for s in segments[:-1]):
         return jsonify(error="Invalid class path"), 400
 
-    # Fast cache check (CPython dict reads are thread-safe)
-    cached = job["class_cache"].get(class_path)
+    # Fast cache check via Redis
+    cached = jobs.get_class_cache(job_id, class_path)
     if cached is not None:
         return jsonify(source=cached, cached=True)
 
@@ -40,7 +41,7 @@ def decompile_class(job_id: str):
         if java_file.exists():
             try:
                 source = java_file.read_text(encoding="utf-8", errors="replace")
-                job["class_cache"][class_path] = source
+                jobs.set_class_cache(job_id, class_path, source)
                 return jsonify(source=source, cached=False)
             except Exception:
                 pass  # fall through to per-class decompilation
@@ -58,19 +59,21 @@ def decompile_class(job_id: str):
     if class_path not in jar_entries:
         return jsonify(error="Class not found in JAR"), 404
 
-    class_lock = job["class_lock"]
+    class_lock = jobs.get_class_lock(job_id)
 
     with class_lock:
         # Double-check cache after acquiring lock
-        cached = job["class_cache"].get(class_path)
+        cached = jobs.get_class_cache(job_id, class_path)
         if cached is not None:
             return jsonify(source=cached, cached=True)
 
         try:
-            source = decompile_single_class(job_id, class_path, jar_path)
-            job["class_cache"][class_path] = source
+            source = submit_class_decompile(
+                decompile_single_class, job_id, class_path, jar_path,
+            )
+            jobs.set_class_cache(job_id, class_path, source)
             return jsonify(source=source, cached=False)
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, TimeoutError):
             return jsonify(error="Per-class decompilation timed out (30s)"), 500
         except Exception as exc:
             return jsonify(error=str(exc)), 500

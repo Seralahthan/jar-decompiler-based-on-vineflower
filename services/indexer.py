@@ -5,8 +5,8 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+import jobs
 from config import OUTPUT_DIR, VINEFLOWER_JAR
-from jobs import jobs, jobs_lock
 
 _JAVA_METHOD_RE = re.compile(
     r'^(?!return\b|throw\b|new\b|if\b|else\b|for\b|while\b|do\b|switch\b|catch\b|try\b|assert\b|case\b|break\b|continue\b)'
@@ -43,9 +43,7 @@ def build_method_index(src_root: Path) -> dict:
 def index_job(job_id: str, jar_path: Path):
     """Run Vineflower for method indexing — keeps decompiled output, no ZIP."""
     def update_idx(status, progress):
-        with jobs_lock:
-            jobs[job_id]["index_status"]   = status
-            jobs[job_id]["index_progress"] = progress
+        jobs.update_job(job_id, index_status=status, index_progress=progress)
 
     index_dir = OUTPUT_DIR / f"{job_id}_index"
     index_dir.mkdir(parents=True, exist_ok=True)
@@ -86,15 +84,10 @@ def index_job(job_id: str, jar_path: Path):
         update_idx("running", 85)
         method_index = build_method_index(src_root)
 
-        with jobs_lock:
-            jobs[job_id]["index_status"]   = "done"
-            jobs[job_id]["index_progress"] = 100
-            jobs[job_id]["method_index"]   = method_index
+        jobs.update_job(job_id, index_status="done", index_progress=100)
+        jobs.set_method_index(job_id, method_index)
 
     except subprocess.TimeoutExpired:
         update_idx("error", 0)
     except Exception as exc:
-        with jobs_lock:
-            jobs[job_id]["index_status"]   = "error"
-            jobs[job_id]["index_error"]    = str(exc)
-            jobs[job_id]["index_progress"] = 0
+        jobs.update_job(job_id, index_status="error", index_error=str(exc), index_progress=0)

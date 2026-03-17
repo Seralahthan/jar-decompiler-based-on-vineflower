@@ -1,18 +1,35 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+
   jar-decompiler:
     build: .
     platform: ${PLATFORM:-linux/arm64}
-    mem_limit: ${MEM_LIMIT:-3g}
+    mem_limit: ${MEM_LIMIT:-6g}
     cpus: "${CPUS:-4}"
     ports:
       - "${HOST_PORT:-9090}:${HOST_PORT:-9090}"
     environment:
       - HOST_PORT=${HOST_PORT:-9090}
+      - REDIS_URL=redis://redis:6379/0
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      - GUNICORN_THREADS=${GUNICORN_THREADS:-4}
+      - FULL_DECOMPILE_POOL_SIZE=${FULL_DECOMPILE_POOL_SIZE:-4}
+      - CLASS_DECOMPILE_POOL_SIZE=${CLASS_DECOMPILE_POOL_SIZE:-20}
     volumes:
-      # Persist uploads and output across container restarts
       - uploads:/app/uploads
       - output:/app/output
+    depends_on:
+      - redis
+    restart: unless-stopped
 
 volumes:
   uploads:
   output:
+  redis-data:

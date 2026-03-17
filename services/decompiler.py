@@ -5,22 +5,21 @@ import uuid
 import zipfile
 from pathlib import Path
 
+import jobs
 from config import OUTPUT_DIR, UPLOAD_DIR, VINEFLOWER_JAR
-from jobs import jobs, jobs_lock
 
 
 def decompile_job(job_id: str, jar_path: Path):
     """Run Vineflower decompiler in a background thread for full JAR decompilation."""
     def update(status, message, progress):
-        with jobs_lock:
-            jobs[job_id].update(status=status, message=message, progress=progress)
+        jobs.update_job(job_id, status=status, message=message, progress=progress)
 
     out_dir = OUTPUT_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
     result_zip = OUTPUT_DIR / f"{job_id}.zip"
 
     try:
-        update("running", "Starting decompiler…", 10)
+        update("running", "Starting decompiler\u2026", 10)
 
         java_bin = shutil.which("java")
         if not java_bin:
@@ -39,7 +38,7 @@ def decompile_job(job_id: str, jar_path: Path):
             str(out_dir),
         ]
 
-        update("running", "Decompiling — this may take a moment…", 30)
+        update("running", "Decompiling \u2014 this may take a moment\u2026", 30)
 
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
@@ -47,7 +46,7 @@ def decompile_job(job_id: str, jar_path: Path):
             stderr = proc.stderr.strip() or proc.stdout.strip()
             raise RuntimeError(f"Decompiler exited with code {proc.returncode}:\n{stderr}")
 
-        update("running", "Packaging results into ZIP…", 80)
+        update("running", "Packaging results into ZIP\u2026", 80)
 
         decompiled_items = list(out_dir.iterdir())
         if not decompiled_items:
@@ -72,9 +71,7 @@ def decompile_job(job_id: str, jar_path: Path):
         total_count = sum(1 for f in out_dir.rglob("*") if f.is_file())
 
         update("done", f"Done! {java_count} Java source files decompiled ({total_count} total files).", 100)
-        with jobs_lock:
-            jobs[job_id]["result_path"] = str(result_zip)
-            jobs[job_id]["filename"] = f"{jar_stem}-decompiled.zip"
+        jobs.update_job(job_id, result_path=str(result_zip), filename=f"{jar_stem}-decompiled.zip")
 
     except subprocess.TimeoutExpired:
         update("error", "Decompilation timed out after 30 minutes.", 0)

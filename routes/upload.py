@@ -1,12 +1,12 @@
-import threading
 import time
 import uuid
 from pathlib import Path
 
 from flask import Blueprint, abort, jsonify, request, send_file
 
+import jobs
 from config import UPLOAD_DIR
-from jobs import jobs, jobs_lock
+from pools import QueueFullError, submit_full_decompile
 from services.decompiler import decompile_job
 
 bp = Blueprint("upload", __name__)
@@ -31,50 +31,43 @@ def upload():
     jar_path = job_upload_dir / Path(f.filename).name
     f.save(str(jar_path))
 
-    with jobs_lock:
-        jobs[job_id] = {
-            "status": "queued",
-            "message": "Queued for decompilation…",
-            "progress": 0,
-            "created_at": time.time(),
-            "jar_path": str(jar_path),
-            "class_cache": {},
-            "class_lock": threading.Lock(),
-        }
+    jobs.create_job(job_id, str(jar_path), time.time())
 
     return jsonify(job_id=job_id), 202
 
 
 @bp.route("/api/start-decompile/<job_id>", methods=["POST"])
 def start_decompile(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = jobs.get_job(job_id)
     if job is None:
         return jsonify(error="Job not found"), 404
     if job.get("status") != "queued":
         return jsonify(error="Decompilation already started"), 400
+
     jar_path = Path(job.get("jar_path", ""))
-    threading.Thread(target=decompile_job, args=(job_id, jar_path), daemon=True).start()
+    try:
+        submit_full_decompile(decompile_job, job_id, jar_path)
+    except QueueFullError as exc:
+        return jsonify(error=str(exc)), 503
+
     return jsonify(ok=True), 202
 
 
 @bp.route("/api/status/<job_id>")
 def status(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = jobs.get_job(job_id)
     if job is None:
         return jsonify(error="Job not found"), 404
     return jsonify(
         status=job["status"],
         message=job["message"],
-        progress=job["progress"],
+        progress=int(job.get("progress", 0)),
     )
 
 
 @bp.route("/api/download/<job_id>")
 def download(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = jobs.get_job(job_id)
     if job is None:
         abort(404)
     if job.get("status") != "done":

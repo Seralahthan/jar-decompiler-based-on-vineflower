@@ -2,7 +2,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify
 
-from jobs import jobs, jobs_lock
+import jobs
 from services.jar_parser import build_tree
 
 bp = Blueprint("tree", __name__)
@@ -10,8 +10,7 @@ bp = Blueprint("tree", __name__)
 
 @bp.route("/api/tree/<job_id>")
 def tree(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = jobs.get_job(job_id)
     if job is None:
         return jsonify(error="Job not found"), 404
 
