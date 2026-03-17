@@ -84,8 +84,10 @@ def index_job(job_id: str, jar_path: Path):
         update_idx("running", 85)
         method_index = build_method_index(src_root)
 
+        job = jobs.get_job(job_id)
+        jar_hash = job.get("jar_hash", "") if job else ""
+        jobs.set_method_index(jar_hash, method_index)
         jobs.update_job(job_id, index_status="done", index_progress=100)
-        jobs.set_method_index(job_id, method_index)
 
     except subprocess.TimeoutExpired:
         update_idx("error", 0)

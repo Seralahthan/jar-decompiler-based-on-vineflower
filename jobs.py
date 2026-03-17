@@ -7,6 +7,9 @@ that multiple Gunicorn workers and future multi-pod deployments share state.
 When Redis is *not* reachable (local ``./run.sh`` without a Redis server)
 the store falls back transparently to a plain in-memory dict + threading
 lock — exactly like the original implementation.
+
+Class cache and method index are keyed by JAR SHA-256 hash (not job ID)
+so that multiple uploads of the same JAR share decompiled results.
 """
 
 import json
@@ -43,8 +46,8 @@ _class_locks_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 _mem_jobs: dict[str, dict] = {}
 _mem_lock = threading.Lock()
-_mem_class_cache: dict[str, dict[str, str]] = {}   # job_id -> {class_path: source}
-_mem_method_index: dict[str, dict] = {}             # job_id -> {method: [locations]}
+_mem_class_cache: dict[str, dict[str, str]] = {}    # jar_hash -> {class_path: source}
+_mem_method_index: dict[str, dict] = {}              # jar_hash -> {method: [locations]}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -55,38 +58,40 @@ def _job_key(job_id: str) -> str:
     return f"job:{job_id}"
 
 
-def _cache_key(job_id: str) -> str:
-    return f"job:{job_id}:class_cache"
+def _cache_key(jar_hash: str) -> str:
+    return f"cache:{jar_hash}"
 
 
-def _index_key(job_id: str) -> str:
-    return f"job:{job_id}:method_index"
+def _index_key(jar_hash: str) -> str:
+    return f"index:{jar_hash}"
+
+
+# Cache entries live longer than per-job data since they benefit
+# any future upload of the same JAR.
+_CACHE_TTL = JOB_TTL_SECONDS * 6  # 6 hours
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Job CRUD
 # ═══════════════════════════════════════════════════════════════════════════
 
-def create_job(job_id: str, jar_path: str, created_at: float) -> None:
+def create_job(job_id: str, jar_path: str, created_at: float,
+               jar_hash: str = "") -> None:
+    fields = {
+        "status": "queued",
+        "message": "Queued for decompilation\u2026",
+        "progress": "0",
+        "created_at": str(created_at),
+        "jar_path": str(jar_path),
+        "jar_hash": jar_hash,
+    }
     if _redis:
         key = _job_key(job_id)
-        _redis.hset(key, mapping={
-            "status": "queued",
-            "message": "Queued for decompilation\u2026",
-            "progress": "0",
-            "created_at": str(created_at),
-            "jar_path": str(jar_path),
-        })
+        _redis.hset(key, mapping=fields)
         _redis.expire(key, JOB_TTL_SECONDS)
     else:
         with _mem_lock:
-            _mem_jobs[job_id] = {
-                "status": "queued",
-                "message": "Queued for decompilation\u2026",
-                "progress": "0",
-                "created_at": str(created_at),
-                "jar_path": str(jar_path),
-            }
+            _mem_jobs[job_id] = fields
 
 
 def get_job(job_id: str) -> dict | None:
@@ -112,59 +117,118 @@ def update_job(job_id: str, **fields) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Class cache  (decompiled source per class path)
+# Class cache  (keyed by JAR hash for content-based deduplication)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def get_class_cache(job_id: str, class_path: str) -> str | None:
+def get_class_cache(jar_hash: str, class_path: str) -> str | None:
+    if not jar_hash:
+        return None
     if _redis:
-        return _redis.hget(_cache_key(job_id), class_path)
+        return _redis.hget(_cache_key(jar_hash), class_path)
     else:
         with _mem_lock:
-            return _mem_class_cache.get(job_id, {}).get(class_path)
+            return _mem_class_cache.get(jar_hash, {}).get(class_path)
 
 
-def set_class_cache(job_id: str, class_path: str, source: str) -> None:
+def set_class_cache(jar_hash: str, class_path: str, source: str) -> None:
+    if not jar_hash:
+        return
     if _redis:
-        key = _cache_key(job_id)
+        key = _cache_key(jar_hash)
         _redis.hset(key, class_path, source)
-        _redis.expire(key, JOB_TTL_SECONDS)
+        _redis.expire(key, _CACHE_TTL)
     else:
         with _mem_lock:
-            _mem_class_cache.setdefault(job_id, {})[class_path] = source
+            _mem_class_cache.setdefault(jar_hash, {})[class_path] = source
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Class lock  (always process-local)
+# Class lock  (process-local fallback for in-memory mode)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def get_class_lock(job_id: str) -> threading.Lock:
+def get_class_lock(jar_hash: str) -> threading.Lock:
+    """Return a process-local lock. Keyed by jar_hash so that concurrent
+    requests for the same JAR content share the lock."""
+    key = jar_hash or "default"
     with _class_locks_lock:
-        if job_id not in _class_locks:
-            _class_locks[job_id] = threading.Lock()
-        return _class_locks[job_id]
+        if key not in _class_locks:
+            _class_locks[key] = threading.Lock()
+        return _class_locks[key]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Method index
+# Distributed class lock  (Redis-backed, cross-worker / cross-pod)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def set_method_index(job_id: str, index: dict) -> None:
+_CLASS_LOCK_TTL = 60  # auto-expire after 60s to prevent deadlocks
+
+
+def acquire_class_lock(jar_hash: str, class_path: str) -> bool:
+    """Try to acquire a distributed lock for decompiling a specific class.
+
+    Keyed by JAR hash so the lock deduplicates across different jobs that
+    uploaded the same JAR content.
+
+    Returns True if the lock was acquired (caller should decompile),
+    or False if another worker already holds it (caller should poll cache).
+    """
+    if not _redis or not jar_hash:
+        return True  # in-memory mode uses process-local locks instead
+    lock_key = f"lock:{jar_hash}:{class_path}"
+    return bool(_redis.set(lock_key, "1", nx=True, ex=_CLASS_LOCK_TTL))
+
+
+def release_class_lock(jar_hash: str, class_path: str) -> None:
+    """Release the distributed lock after decompilation completes."""
+    if not _redis or not jar_hash:
+        return
+    lock_key = f"lock:{jar_hash}:{class_path}"
+    _redis.delete(lock_key)
+
+
+def wait_for_class_cache(jar_hash: str, class_path: str,
+                         timeout: float = 35, interval: float = 0.3) -> str | None:
+    """Poll cache until the class source appears or timeout is reached.
+
+    Used when another worker holds the distributed lock — instead of
+    decompiling again, we wait for the result to appear in cache.
+    """
+    if not jar_hash:
+        return None
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        cached = get_class_cache(jar_hash, class_path)
+        if cached is not None:
+            return cached
+        time.sleep(interval)
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Method index  (keyed by JAR hash for content-based deduplication)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def set_method_index(jar_hash: str, index: dict) -> None:
+    if not jar_hash:
+        return
     if _redis:
-        key = _index_key(job_id)
+        key = _index_key(jar_hash)
         _redis.set(key, json.dumps(index))
-        _redis.expire(key, JOB_TTL_SECONDS)
+        _redis.expire(key, _CACHE_TTL)
     else:
         with _mem_lock:
-            _mem_method_index[job_id] = index
+            _mem_method_index[jar_hash] = index
 
 
-def get_method_index(job_id: str) -> dict:
+def get_method_index(jar_hash: str) -> dict:
+    if not jar_hash:
+        return {}
     if _redis:
-        raw = _redis.get(_index_key(job_id))
+        raw = _redis.get(_index_key(jar_hash))
         return json.loads(raw) if raw else {}
     else:
         with _mem_lock:
-            return _mem_method_index.get(job_id, {})
+            return _mem_method_index.get(jar_hash, {})
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -172,7 +236,11 @@ def get_method_index(job_id: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def delete_job_artifacts(job_id: str) -> None:
-    """Remove filesystem artifacts and store entries for a job."""
+    """Remove filesystem artifacts and job store entry.
+
+    Note: global cache (class cache, method index) is NOT deleted here
+    because it is shared across jobs and managed by its own TTL.
+    """
     upload_path = UPLOAD_DIR / job_id
     output_path = OUTPUT_DIR / job_id
     index_path = OUTPUT_DIR / f"{job_id}_index"
@@ -183,12 +251,10 @@ def delete_job_artifacts(job_id: str) -> None:
     result_zip.unlink(missing_ok=True)
 
     if _redis:
-        _redis.delete(_job_key(job_id), _cache_key(job_id), _index_key(job_id))
+        _redis.delete(_job_key(job_id))
     else:
         with _mem_lock:
             _mem_jobs.pop(job_id, None)
-            _mem_class_cache.pop(job_id, None)
-            _mem_method_index.pop(job_id, None)
 
     with _class_locks_lock:
         _class_locks.pop(job_id, None)
@@ -204,7 +270,7 @@ def get_expired_job_ids() -> list[str]:
         while True:
             cursor, keys = _redis.scan(cursor=cursor, match="job:*", count=100)
             for key in keys:
-                # Skip sub-keys (class_cache, method_index)
+                # Skip non-job keys
                 if key.count(":") > 1:
                     continue
                 created = _redis.hget(key, "created_at")

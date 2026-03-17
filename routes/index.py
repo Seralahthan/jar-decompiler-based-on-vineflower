@@ -14,11 +14,20 @@ def build_index(job_id: str):
     job = jobs.get_job(job_id)
     if job is None:
         return jsonify(error="Job not found"), 404
+
     status = job.get("index_status", "idle")
     if status == "done":
         return jsonify(ok=True), 200
     if status == "running":
         return jsonify(ok=False, status="running"), 202
+
+    # Check if a method index already exists for this JAR content
+    jar_hash = job.get("jar_hash", "")
+    cached_index = jobs.get_method_index(jar_hash)
+    if cached_index:
+        # Reuse the cached index — no need to run Vineflower again
+        jobs.update_job(job_id, index_status="done", index_progress=100)
+        return jsonify(ok=True), 200
 
     jobs.update_job(job_id, index_status="queued", index_progress=0)
 
@@ -54,7 +63,8 @@ def search_methods(job_id: str):
     if len(query) < 2:
         return jsonify(results=[])
 
-    method_index = jobs.get_method_index(job_id)
+    jar_hash = job.get("jar_hash", "")
+    method_index = jobs.get_method_index(jar_hash)
     results = []
     for method_name, locations in method_index.items():
         if query in method_name.lower():

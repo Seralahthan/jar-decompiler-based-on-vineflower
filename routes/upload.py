@@ -1,3 +1,4 @@
+import hashlib
 import time
 import uuid
 from pathlib import Path
@@ -10,6 +11,15 @@ from pools import QueueFullError, submit_full_decompile
 from services.decompiler import decompile_job
 
 bp = Blueprint("upload", __name__)
+
+
+def _compute_jar_hash(jar_path: Path) -> str:
+    """Compute SHA-256 hash of a JAR file for content-based deduplication."""
+    sha256 = hashlib.sha256()
+    with open(jar_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
 
 
 @bp.route("/api/upload", methods=["POST"])
@@ -31,7 +41,8 @@ def upload():
     jar_path = job_upload_dir / Path(f.filename).name
     f.save(str(jar_path))
 
-    jobs.create_job(job_id, str(jar_path), time.time())
+    jar_hash = _compute_jar_hash(jar_path)
+    jobs.create_job(job_id, str(jar_path), time.time(), jar_hash=jar_hash)
 
     return jsonify(job_id=job_id), 202
 

@@ -28,8 +28,10 @@ def decompile_class(job_id: str):
     if any(s in ("", "..") for s in segments[:-1]):
         return jsonify(error="Invalid class path"), 400
 
-    # Fast cache check via Redis
-    cached = jobs.get_class_cache(job_id, class_path)
+    jar_hash = job.get("jar_hash", "")
+
+    # Fast cache check (shared across all jobs with the same JAR content)
+    cached = jobs.get_class_cache(jar_hash, class_path)
     if cached is not None:
         return jsonify(source=cached, cached=True)
 
@@ -41,7 +43,7 @@ def decompile_class(job_id: str):
         if java_file.exists():
             try:
                 source = java_file.read_text(encoding="utf-8", errors="replace")
-                jobs.set_class_cache(job_id, class_path, source)
+                jobs.set_class_cache(jar_hash, class_path, source)
                 return jsonify(source=source, cached=False)
             except Exception:
                 pass  # fall through to per-class decompilation
@@ -59,21 +61,32 @@ def decompile_class(job_id: str):
     if class_path not in jar_entries:
         return jsonify(error="Class not found in JAR"), 404
 
-    class_lock = jobs.get_class_lock(job_id)
+    # ── Distributed lock (keyed by JAR hash for cross-job dedup) ──
+    if not jobs.acquire_class_lock(jar_hash, class_path):
+        # Another worker/job is decompiling this class — wait for result
+        source = jobs.wait_for_class_cache(jar_hash, class_path)
+        if source is not None:
+            return jsonify(source=source, cached=True)
+        return jsonify(error="Per-class decompilation timed out (35s)"), 500
 
-    with class_lock:
-        # Double-check cache after acquiring lock
-        cached = jobs.get_class_cache(job_id, class_path)
-        if cached is not None:
-            return jsonify(source=cached, cached=True)
+    # We hold the distributed lock — decompile with process-local lock
+    class_lock = jobs.get_class_lock(jar_hash)
 
-        try:
+    try:
+        with class_lock:
+            # Double-check cache after acquiring process-local lock
+            cached = jobs.get_class_cache(jar_hash, class_path)
+            if cached is not None:
+                return jsonify(source=cached, cached=True)
+
             source = submit_class_decompile(
                 decompile_single_class, job_id, class_path, jar_path,
             )
-            jobs.set_class_cache(job_id, class_path, source)
+            jobs.set_class_cache(jar_hash, class_path, source)
             return jsonify(source=source, cached=False)
-        except (subprocess.TimeoutExpired, TimeoutError):
-            return jsonify(error="Per-class decompilation timed out (30s)"), 500
-        except Exception as exc:
-            return jsonify(error=str(exc)), 500
+    except (subprocess.TimeoutExpired, TimeoutError):
+        return jsonify(error="Per-class decompilation timed out (30s)"), 500
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+    finally:
+        jobs.release_class_lock(jar_hash, class_path)

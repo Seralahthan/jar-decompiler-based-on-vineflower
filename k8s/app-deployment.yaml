@@ -30,10 +30,10 @@ spec:
               value: "4"
             - name: GUNICORN_THREADS
               value: "4"
-            - name: FULL_DECOMPILE_POOL_SIZE
-              value: "4"
-            - name: CLASS_DECOMPILE_POOL_SIZE
-              value: "20"
+            - name: FULL_DECOMPILE_POOL_TOTAL
+              value: "2"
+            - name: CLASS_DECOMPILE_POOL_TOTAL
+              value: "8"
           resources:
             requests:
               memory: "2Gi"
