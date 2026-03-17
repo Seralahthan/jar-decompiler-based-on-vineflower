@@ -17,6 +17,7 @@ services:
       - "${HOST_PORT:-9090}:${HOST_PORT:-9090}"
     environment:
       - HOST_PORT=${HOST_PORT:-9090}
+      # Point to the dedicated Redis container instead of the bundled one
       - REDIS_URL=redis://redis:6379/0
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
       - GUNICORN_THREADS=${GUNICORN_THREADS:-4}
