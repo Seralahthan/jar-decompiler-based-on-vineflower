@@ -16,7 +16,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 # Redis
 # ---------------------------------------------------------------------------
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-JOB_TTL_SECONDS = 3600  # 1 hour
+JOB_TTL_SECONDS = 14400  # 4 hours
 
 # ---------------------------------------------------------------------------
 # Gunicorn

@@ -199,6 +199,10 @@
     try {
       const res  = await fetch(`/api/tree/${jobId}`);
       const data = await res.json();
+      if (res.status === 404 && data.error === "Job not found") {
+        handleSessionExpired();
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to read JAR structure.");
 
       currentJobId = jobId;
@@ -258,6 +262,10 @@
     try {
       const res = await fetch(`/api/build-index/${currentJobId}`, { method: "POST" });
       const data = await res.json();
+      if (res.status === 404 && data.error === "Job not found") {
+        handleSessionExpired();
+        return;
+      }
       // Index already built — activate immediately
       if (res.status === 200 && data.ok) {
         onIndexReady();
@@ -279,6 +287,12 @@
     try {
       const res  = await fetch(`/api/index-status/${jobId}`);
       const data = await res.json();
+
+      if (res.status === 404 && data.error === "Job not found") {
+        stopIndexPoll();
+        handleSessionExpired();
+        return;
+      }
 
       const pct = data.progress || 0;
       indexingPct.textContent = `Indexing… ${pct}%`;
@@ -475,6 +489,11 @@
       });
       const data = await res.json();
 
+      if (res.status === 404 && data.error === "Job not found") {
+        handleSessionExpired();
+        return;
+      }
+
       if (!res.ok || data.error) {
         showSourceError(data.error || "Decompilation failed");
         return;
@@ -547,6 +566,12 @@
       const res  = await fetch(`/api/status/${jobId}`);
       const data = await res.json();
 
+      if (res.status === 404 && data.error === "Job not found") {
+        stopZipPoll();
+        handleSessionExpired();
+        return;
+      }
+
       const pct = data.progress || 0;
       zipFooterBarFill.style.width = pct + "%";
       zipFooterPct.textContent     = pct + "%";
@@ -595,6 +620,12 @@
     document.body.style.cursor     = "";
     document.body.style.userSelect = "";
   });
+
+  // ── Session expired — redirect to upload page ─────────
+  function handleSessionExpired() {
+    alert("Your session has expired. Please re-upload the JAR file.");
+    window.location.href = "/";
+  }
 
   // ── Error card helper ──────────────────────────────────
   function showError(msg) {
