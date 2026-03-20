@@ -5,7 +5,9 @@ FROM python:3.13-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         openjdk-21-jre-headless \
-        redis-server && \
+        redis-server \
+        nginx \
+        openssl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,22 +18,30 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
 COPY app.py config.py jobs.py pools.py gunicorn.conf.py entrypoint.sh ./
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY routes/ routes/
 COPY services/ services/
 COPY templates/ templates/
 COPY static/ static/
 COPY lib/ lib/
 
-# Pre-create runtime directories
-RUN mkdir -p uploads output
+# Pre-create runtime directories and nginx temp dirs (owned by appuser)
+RUN mkdir -p uploads output \
+    && mkdir -p /tmp/certs /tmp/nginx-client-body /tmp/nginx-proxy \
+                /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi
 
 # Run as non-root user for security
-RUN useradd -m appuser && chown -R appuser:appuser /app
+RUN useradd -m appuser \
+    && chown -R appuser:appuser /app /tmp/certs \
+       /tmp/nginx-client-body /tmp/nginx-proxy \
+       /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi
+
 USER appuser
 
 ENV HOST_PORT=9090
 ENV REDIS_URL=redis://localhost:6379/0
-EXPOSE 9090
+# 8443 = HTTPS, 8080 = HTTP (redirects to HTTPS)
+EXPOSE 8443 8080
 
 # Entrypoint starts bundled Redis, then launches Gunicorn
 CMD ["./entrypoint.sh"]
