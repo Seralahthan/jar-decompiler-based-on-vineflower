@@ -40,6 +40,8 @@ echo "  │   Press Ctrl+C to stop                   │"
 echo "  └──────────────────────────────────────────┘"
 echo ""
 
-# Override bind to 0.0.0.0:9090 (gunicorn.conf.py defaults
-# to 127.0.0.1 for use behind nginx in Docker/K8s).
-gunicorn -c gunicorn.conf.py --bind 0.0.0.0:9090 app:app
+# Gunicorn runs from src/ so that imports (config, jobs, routes, etc.) resolve.
+# Override bind to 0.0.0.0:9090 (gunicorn.conf.py defaults to 127.0.0.1
+# for use behind nginx in Docker/K8s).
+cd "$SCRIPT_DIR/src"
+gunicorn -c "$SCRIPT_DIR/deploy/docker/gunicorn.conf.py" --bind 0.0.0.0:9090 app:app

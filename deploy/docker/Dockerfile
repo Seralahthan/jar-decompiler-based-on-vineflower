@@ -17,13 +17,14 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
-COPY app.py config.py jobs.py pools.py gunicorn.conf.py entrypoint.sh ./
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY routes/ routes/
-COPY services/ services/
-COPY templates/ templates/
-COPY static/ static/
-COPY lib/ lib/
+COPY src/app.py src/config.py src/jobs.py src/pools.py ./
+COPY deploy/docker/gunicorn.conf.py deploy/docker/entrypoint.sh ./
+COPY deploy/docker/nginx.conf /etc/nginx/nginx.conf
+COPY src/routes/ routes/
+COPY src/services/ services/
+COPY src/templates/ templates/
+COPY src/static/ static/
+COPY src/lib/ lib/
 
 # Pre-create runtime directories and nginx temp dirs (owned by appuser)
 RUN mkdir -p uploads output \

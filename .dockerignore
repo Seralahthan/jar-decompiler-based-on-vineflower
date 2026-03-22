@@ -1,7 +1,9 @@
 .venv/
-uploads/
-output/
+.git/
 __pycache__/
 *.pyc
 *.pyo
 .DS_Store
+tests/
+notes.txt
+email-draft.md

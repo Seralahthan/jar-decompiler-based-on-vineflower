@@ -9,10 +9,10 @@
 
 2. **Deploy the app**:
    ```bash
-   kubectl apply -f k8s/namespace.yaml
-   kubectl apply -f k8s/redis-deployment.yaml -f k8s/redis-service.yaml
-   kubectl apply -f k8s/app-deployment.yaml -f k8s/app-service.yaml
-   kubectl apply -f k8s/hpa.yaml   # needed for Scenario 02
+   kubectl apply -f deploy/k8s/namespace.yaml
+   kubectl apply -f deploy/k8s/redis-deployment.yaml -f deploy/k8s/redis-service.yaml
+   kubectl apply -f deploy/k8s/app-deployment.yaml -f deploy/k8s/app-service.yaml
+   kubectl apply -f deploy/k8s/hpa.yaml   # needed for Scenario 02
    ```
 
 3. **Port-forward** (in a separate terminal):

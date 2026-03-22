@@ -7,7 +7,7 @@ pods are terminated as usage drops.
 
 Prerequisites:
   - minikube running with metrics-server addon
-  - HPA applied: kubectl apply -f k8s/hpa.yaml
+  - HPA applied: kubectl apply -f deploy/k8s/hpa.yaml
   - kubectl port-forward svc/jar-decompiler-svc 8443:443 -n jar-decompiler
   - Fixture JARs built: tests/fixtures/build_jars.sh
 

@@ -9,7 +9,9 @@ services:
     restart: unless-stopped
 
   jar-decompiler:
-    build: .
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
     platform: ${PLATFORM:-linux/arm64}
     mem_limit: ${MEM_LIMIT:-6g}
     cpus: "${CPUS:-4}"
