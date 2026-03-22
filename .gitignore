@@ -12,6 +12,9 @@ build/
 uploads/
 output/
 
+# Generated test fixtures (built by tests/fixtures/build_jars.sh)
+tests/fixtures/jars/
+
 # macOS
 .DS_Store
 
