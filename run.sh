@@ -29,15 +29,17 @@ echo "Installing/verifying Python dependencies…"
 python3 -m pip install -q -r requirements.txt
 
 # ── Open browser after a short delay ────────────────────
-(sleep 1.5 && open "http://127.0.0.1:9090") &
+(sleep 2 && open "http://127.0.0.1:9090") &
 
-# ── Start Flask ──────────────────────────────────────────
+# ── Start Gunicorn ─────────────────────────────────────
 echo ""
 echo "  ┌──────────────────────────────────────────┐"
-echo "  │   JAR Decompiler is running              │"
+echo "  │   JAR Decompiler is running (Gunicorn)   │"
 echo "  │   Open: http://127.0.0.1:9090            │"
 echo "  │   Press Ctrl+C to stop                   │"
 echo "  └──────────────────────────────────────────┘"
 echo ""
 
-python app.py
+# Override bind to 0.0.0.0:9090 (gunicorn.conf.py defaults
+# to 127.0.0.1 for use behind nginx in Docker/K8s).
+gunicorn -c gunicorn.conf.py --bind 0.0.0.0:9090 app:app
