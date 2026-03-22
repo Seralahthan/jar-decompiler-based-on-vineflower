@@ -7,10 +7,13 @@ from pathlib import Path
 import pytest
 import redis as redis_lib
 import requests
+import urllib3
 
-BASE_URL = os.environ.get("DECOMPILER_URL", "http://localhost:9090")
+urllib3.disable_warnings()
+
+BASE_URL = os.environ.get("DECOMPILER_URL", "https://localhost")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 JARS_DIR = FIXTURES_DIR / "jars"
 
 
@@ -63,6 +66,7 @@ def base_url():
 def session():
     """Shared requests.Session with connection pooling."""
     s = requests.Session()
+    s.verify = False  # Allow self-signed TLS certs in Docker
     # Wait for the service to become reachable
     for attempt in range(15):
         try:
