@@ -10,8 +10,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: jar-decompiler
-  minReplicas: 2
-  maxReplicas: 20
+  minReplicas: 1
+  maxReplicas: 5
   metrics:
     - type: Resource
       resource:
@@ -33,7 +33,7 @@ spec:
           value: 2
           periodSeconds: 60
     scaleDown:
-      stabilizationWindowSeconds: 300
+      stabilizationWindowSeconds: 60
       policies:
         - type: Pods
           value: 1

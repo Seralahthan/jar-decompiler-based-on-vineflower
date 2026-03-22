@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: jar-decompiler
     app.kubernetes.io/component: web
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: jar-decompiler
@@ -20,7 +20,10 @@ spec:
         - name: jar-decompiler
           image: ghcr.io/seralahthan/jar-decompiler-based-on-vineflower:latest
           ports:
-            - containerPort: 9090
+            - containerPort: 8443
+              name: https
+            - containerPort: 8080
+              name: http
           env:
             - name: HOST_PORT
               value: "9090"
@@ -36,22 +39,24 @@ spec:
               value: "8"
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "1"
+              memory: "512Mi"
+              cpu: "250m"
             limits:
-              memory: "6Gi"
-              cpu: "4"
+              memory: "2Gi"
+              cpu: "2"
           readinessProbe:
             httpGet:
               path: /
-              port: 9090
-            initialDelaySeconds: 5
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /
-              port: 9090
-            initialDelaySeconds: 10
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 15
             periodSeconds: 30
           volumeMounts:
             - name: uploads
