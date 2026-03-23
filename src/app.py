@@ -1,4 +1,5 @@
 import os
+import threading
 
 from flask import Flask
 
@@ -7,6 +8,13 @@ from routes import main, upload, index, tree, decompile
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+
+@app.before_request
+def _inject_thread_name():
+    """Store thread name in the WSGI environ so Gunicorn's access log can include it."""
+    from flask import request
+    request.environ["X-Thread"] = threading.current_thread().name
 
 app.register_blueprint(main.bp)
 app.register_blueprint(upload.bp)

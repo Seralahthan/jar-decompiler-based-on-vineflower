@@ -34,11 +34,11 @@ max_requests_jitter = 50  # stagger restarts across workers
 accesslog = "-"
 errorlog = "-"
 loglevel = "info"
+# Format: include worker PID and thread name for debugging multi-worker issues.
+# %(p)s = worker PID, %({X-Thread}e)s = thread name injected via WSGI middleware.
+access_log_format = '[worker:%(p)s/%({X-Thread}e)s] %(h)s "%(r)s" %(s)s %(b)s'
 
 
-# ---------------------------------------------------------------------------
-# Hooks
-# ---------------------------------------------------------------------------
 def post_fork(server, worker):
     """Start the cleanup daemon thread in each worker process."""
     from services.cleanup import cleanup_old_jobs
