@@ -68,7 +68,7 @@ def _index_key(jar_hash: str) -> str:
 
 # Cache entries live longer than per-job data since they benefit
 # any future upload of the same JAR.
-_CACHE_TTL = JOB_TTL_SECONDS * 6  # 6 hours
+_CACHE_TTL = JOB_TTL_SECONDS * 2  # 8 hours
 
 
 # ═══════════════════════════════════════════════════════════════════════════

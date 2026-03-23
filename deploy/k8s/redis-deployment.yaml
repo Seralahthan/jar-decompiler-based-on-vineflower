@@ -19,16 +19,16 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
-          command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+          command: ["redis-server", "--maxmemory", "2gb", "--maxmemory-policy", "allkeys-lru"]
           ports:
             - containerPort: 6379
           resources:
             requests:
-              memory: "128Mi"
-              cpu: "100m"
+              memory: "1Gi"
+              cpu: "250m"
             limits:
-              memory: "512Mi"
-              cpu: "500m"
+              memory: "3Gi"
+              cpu: "1"
           volumeMounts:
             - name: redis-data
               mountPath: /data

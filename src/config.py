@@ -16,6 +16,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 # Redis
 # ---------------------------------------------------------------------------
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+REDIS_MAX_MEMORY = os.environ.get("REDIS_MAX_MEMORY", "2gb")
 JOB_TTL_SECONDS = 14400  # 4 hours
 
 # ---------------------------------------------------------------------------

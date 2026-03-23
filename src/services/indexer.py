@@ -87,6 +87,21 @@ def index_job(job_id: str, jar_path: Path):
         job = jobs.get_job(job_id)
         jar_hash = job.get("jar_hash", "") if job else ""
         jobs.set_method_index(jar_hash, method_index)
+
+        # Populate the class cache so that any job with the same JAR hash
+        # gets instant results without per-class Vineflower invocations.
+        if jar_hash:
+            update_idx("running", 90)
+            for java_file in src_root.rglob("*.java"):
+                try:
+                    rel = java_file.relative_to(src_root).as_posix()
+                    class_path = rel.replace(".java", ".class")
+                    if jobs.get_class_cache(jar_hash, class_path) is None:
+                        source = java_file.read_text(encoding="utf-8", errors="replace")
+                        jobs.set_class_cache(jar_hash, class_path, source)
+                except Exception:
+                    continue
+
         jobs.update_job(job_id, index_status="done", index_progress=100)
 
     except subprocess.TimeoutExpired:

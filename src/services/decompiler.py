@@ -70,6 +70,21 @@ def decompile_job(job_id: str, jar_path: Path):
         java_count = sum(1 for f in out_dir.rglob("*.java"))
         total_count = sum(1 for f in out_dir.rglob("*") if f.is_file())
 
+        # Populate the class cache from the full decompile output so that
+        # future per-class requests (same or different job) get instant results.
+        jar_hash = jobs.get_job(job_id).get("jar_hash", "") if jobs.get_job(job_id) else ""
+        if jar_hash:
+            src_root = out_dir / "sources" if (out_dir / "sources").is_dir() else out_dir
+            for java_file in src_root.rglob("*.java"):
+                try:
+                    rel = java_file.relative_to(src_root).as_posix()
+                    class_path = rel.replace(".java", ".class")
+                    if jobs.get_class_cache(jar_hash, class_path) is None:
+                        source = java_file.read_text(encoding="utf-8", errors="replace")
+                        jobs.set_class_cache(jar_hash, class_path, source)
+                except Exception:
+                    continue
+
         update("done", f"Done! {java_count} Java source files decompiled ({total_count} total files).", 100)
         jobs.update_job(job_id, result_path=str(result_zip), filename=f"{jar_stem}-decompiled.zip")
 

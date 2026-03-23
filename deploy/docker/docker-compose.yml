@@ -5,7 +5,7 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --maxmemory ${REDIS_MAX_MEMORY:-2gb} --maxmemory-policy allkeys-lru
     restart: unless-stopped
 
   jar-decompiler:

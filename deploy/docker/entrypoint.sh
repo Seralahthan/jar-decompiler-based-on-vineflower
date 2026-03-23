@@ -34,7 +34,7 @@ redis-server \
   --port 6379 \
   --bind 127.0.0.1 \
   --dir /tmp \
-  --maxmemory 256mb \
+  --maxmemory "${REDIS_MAX_MEMORY:-2gb}" \
   --maxmemory-policy allkeys-lru \
   --loglevel warning \
   --protected-mode no
