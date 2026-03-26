@@ -1,5 +1,6 @@
 """Shared fixtures for K8s integration tests."""
 import os
+import subprocess
 import pytest
 import requests
 import urllib3
@@ -7,6 +8,7 @@ import urllib3
 urllib3.disable_warnings()
 
 BASE_URL = os.environ.get("K8S_BASE_URL", "https://localhost:8443")
+NAMESPACE = os.environ.get("K8S_NAMESPACE", "jar-decompiler")
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures", "jars")
 
 JAR_FILES = {
@@ -95,3 +97,33 @@ def wait_for_decompile(session, base_url, job_id, timeout=60):
             return False
         time.sleep(1)
     return False
+
+
+def flush_redis_cache():
+    """Flush cache:* and index:* keys from the K8s Redis pod.
+
+    Uses kubectl exec to run redis-cli KEYS + DEL inside the cluster.
+    Falls back silently if kubectl is unavailable or Redis is unreachable.
+    """
+    try:
+        # Get the Redis pod name
+        result = subprocess.run(
+            ["kubectl", "-n", NAMESPACE, "get", "pods",
+             "-l", "app.kubernetes.io/name=redis",
+             "-o", "jsonpath={.items[0].metadata.name}"],
+            capture_output=True, text=True, timeout=10,
+        )
+        pod_name = result.stdout.strip()
+        if not pod_name:
+            return False
+
+        # Flush cache:* and index:* keys (not job:* — those are needed by other tests)
+        for pattern in ("cache:*", "index:*"):
+            subprocess.run(
+                ["kubectl", "-n", NAMESPACE, "exec", pod_name, "--",
+                 "sh", "-c", f"redis-cli KEYS '{pattern}' | xargs -r redis-cli DEL"],
+                capture_output=True, timeout=10,
+            )
+        return True
+    except Exception:
+        return False

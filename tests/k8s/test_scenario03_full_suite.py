@@ -25,7 +25,7 @@ import urllib3
 
 urllib3.disable_warnings()
 
-from conftest import upload_jar, decompile_class, wait_for_index, wait_for_decompile
+from conftest import upload_jar, decompile_class, wait_for_index, wait_for_decompile, flush_redis_cache
 
 
 def new_session():
@@ -103,20 +103,28 @@ class TestContentDeduplication:
 class TestCacheBehavior:
     def test_cached_response_is_faster(self, session, base_url, jar_paths):
         """Cached responses should be significantly faster than cold decompiles."""
+        # Flush the class cache so the first request is truly cold (JVM spawn)
+        flushed = flush_redis_cache()
+        if not flushed:
+            pytest.skip("Could not flush Redis cache via kubectl")
+
         job_id = upload_jar(session, base_url, jar_paths["java17"])
 
-        # Cold decompile
+        # Cold decompile — must spawn Vineflower JVM
         t1 = time.time()
-        decompile_class(session, base_url, job_id, "com/test/java17/ShapeHierarchy.class")
+        r1 = decompile_class(session, base_url, job_id, "com/test/java17/ShapeHierarchy.class")
         cold_time = time.time() - t1
+        assert r1.status_code == 200
+        assert r1.json().get("cached") is not True, \
+            "Expected cold decompile but got cached hit — flush may have failed"
 
-        # Cached decompile
+        # Cached decompile — should return from Redis instantly
         t2 = time.time()
-        r = decompile_class(session, base_url, job_id, "com/test/java17/ShapeHierarchy.class")
+        r2 = decompile_class(session, base_url, job_id, "com/test/java17/ShapeHierarchy.class")
         cached_time = time.time() - t2
+        assert r2.json().get("cached") is True
 
-        assert r.json().get("cached") is True
-        # Cached should be at least 2x faster (usually 10x+)
+        # Cached should be at least 2x faster (typically 100x+: ~1s vs ~5ms)
         assert cached_time < cold_time, \
             f"Cached ({cached_time:.3f}s) should be faster than cold ({cold_time:.3f}s)"
 

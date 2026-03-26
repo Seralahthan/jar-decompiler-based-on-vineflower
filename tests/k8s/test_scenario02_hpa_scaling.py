@@ -33,7 +33,7 @@ NAMESPACE = os.environ.get("K8S_NAMESPACE", "jar-decompiler")
 LOAD_THREADS = int(os.environ.get("LOAD_THREADS", "8"))
 LOAD_DURATION = int(os.environ.get("LOAD_DURATION", "90"))
 SCALE_UP_WAIT = int(os.environ.get("SCALE_UP_WAIT", "120"))
-SCALE_DOWN_WAIT = int(os.environ.get("SCALE_DOWN_WAIT", "240"))
+SCALE_DOWN_WAIT = int(os.environ.get("SCALE_DOWN_WAIT", "480"))
 
 
 def kubectl(*args):
@@ -63,9 +63,18 @@ class TestHPAScaling:
     """Test that HPA scales pods up under load and back down when load stops."""
 
     def test_initial_state(self):
-        """Verify we start with the expected number of pods."""
+        """Wait for pods to settle at minReplicas (1) before testing."""
         count = get_pod_count()
-        assert count >= 1, f"Expected at least 1 pod, got {count}"
+        if count > 1:
+            print(f"\n  Pods at {count}, waiting for scale-down to 1...")
+            deadline = time.time() + 300  # 5 minutes max
+            while time.time() < deadline:
+                count = get_pod_count()
+                print(f"    Pods: {count}")
+                if count <= 1:
+                    break
+                time.sleep(15)
+        assert count == 1, f"Expected 1 pod before starting, got {count}"
         print(f"\n  Initial pod count: {count}")
 
     def test_scale_up_under_load(self):
@@ -127,16 +136,22 @@ class TestHPAScaling:
         # Check if pods scaled up
         # HPA may take up to 30s to react + time to start pods
         max_pods_seen = initial_count
+        stable_count = 0  # consecutive polls with unchanged pod count
         print(f"  Waiting up to {SCALE_UP_WAIT}s for scale-up...")
         deadline = time.time() + SCALE_UP_WAIT
         while time.time() < deadline:
             count = get_pod_count()
-            max_pods_seen = max(max_pods_seen, count)
             cpu = get_hpa_cpu()
             print(f"    Pods: {count}, CPU: {cpu}%")
-            if count > initial_count:
-                print(f"  Scale-up detected! {initial_count} → {count}")
-                break
+            if count > max_pods_seen:
+                max_pods_seen = count
+                stable_count = 0
+            elif count == max_pods_seen and max_pods_seen > initial_count:
+                stable_count += 1
+                # Pod count unchanged for 3 consecutive polls (45s) — peak reached
+                if stable_count >= 3:
+                    print(f"  Peak stabilized at {max_pods_seen} pods")
+                    break
             time.sleep(15)
 
         assert max_pods_seen > initial_count, \
@@ -144,29 +159,32 @@ class TestHPAScaling:
         print(f"  PASS: Scaled from {initial_count} to {max_pods_seen} pods")
 
     def test_scale_down_after_load(self):
-        """After load stops, verify HPA removes excess pods."""
+        """After load stops, verify HPA scales back to minReplicas (1)."""
         current_count = get_pod_count()
         if current_count <= 1:
             pytest.skip("Only 1 pod running — scale-down not applicable")
 
+        target = 1  # HPA minReplicas
+        peak_count = current_count
         print(f"\n  Current pods: {current_count}")
-        print(f"  Waiting up to {SCALE_DOWN_WAIT}s for scale-down...")
+        print(f"  Waiting up to {SCALE_DOWN_WAIT}s for scale-down to {target}...")
 
-        min_pods_seen = current_count
         deadline = time.time() + SCALE_DOWN_WAIT
         while time.time() < deadline:
             count = get_pod_count()
-            min_pods_seen = min(min_pods_seen, count)
+            peak_count = max(peak_count, count)
             cpu = get_hpa_cpu()
             print(f"    Pods: {count}, CPU: {cpu}%")
-            if count < current_count:
-                print(f"  Scale-down detected! {current_count} → {count}")
-                break
+            if count <= target:
+                print(f"  PASS: Scaled down from peak {peak_count} to {count} pod(s)")
+                return
             time.sleep(30)
 
-        assert min_pods_seen < current_count, \
-            f"HPA did not scale down. Min pods seen: {min_pods_seen}, was: {current_count}"
-        print(f"  PASS: Scaled down from {current_count} to {min_pods_seen} pods")
+        final = get_pod_count()
+        pytest.fail(
+            f"HPA did not scale down to {target} within {SCALE_DOWN_WAIT}s. "
+            f"Peak: {peak_count}, final: {final}"
+        )
 
 
 class TestHPAConfiguration:

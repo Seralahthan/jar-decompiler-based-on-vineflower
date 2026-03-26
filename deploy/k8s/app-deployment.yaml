@@ -51,6 +51,8 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /
@@ -58,6 +60,8 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: 15
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
